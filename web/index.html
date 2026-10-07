@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- page:start -->
+<title>Rubik's Cube Solver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a big 3D stage on the left, a working panel on the right (stacked on phones). */
+:root {
+  --bg: #eef1f6;
+  --panel: #ffffff;
+  --ink: #18202e;
+  --muted: #5a6577;
+  --line: #d6dce6;
+  --accent: #2f5bd3;
+  --accent-ink: #ffffff;
+  --stage: #dfe4ee;
+  --danger: #b3261e;
+  --ok: #1f7a43;
+  --body-color: #1b1d22;
+
+  --c-U: #f6f7f9; --c-R: #d7261e; --c-F: #1e9a4b; --c-D: #f5cf1d; --c-L: #f2780c; --c-B: #1d4fc4; --c-X: #8a93a3;
+
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151c; --panel: #1a1f29; --ink: #e8ecf3; --muted: #9aa5b8; --line: #2c3442;
+    --accent: #8aa8ff; --accent-ink: #0d1324; --stage: #161b24; --danger: #ff8a80; --ok: #6fd39a;
+    --c-X: #586173; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #1a1f29; --ink: #e8ecf3; --muted: #9aa5b8; --line: #2c3442;
+  --accent: #8aa8ff; --accent-ink: #0d1324; --stage: #161b24; --danger: #ff8a80; --ok: #6fd39a;
+  --c-X: #586173; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 var(--body);
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 32px; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font: 800 clamp(28px, 4vw, 40px)/1.05 var(--display); margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+h1 .dot { display: inline-grid; grid-template-columns: repeat(3, 7px); gap: 2px; vertical-align: middle; margin-right: 10px; transform: translateY(-3px); }
+h1 .dot i { width: 7px; height: 7px; border-radius: 2px; }
+.tagline { color: var(--muted); margin: 0; max-width: 52ch; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+.stage {
+  position: relative; background: var(--stage); border-radius: var(--radius);
+  aspect-ratio: 1 / 1; max-width: 100%; max-height: 72vh; width: 100%; overflow: hidden;
+  touch-action: none; cursor: grab;
+}
+.stage canvas { display: block; width: 100%; height: 100%; }
+.stage:active { cursor: grabbing; }
+.stage .hint {
+  position: absolute; left: 12px; bottom: 10px; right: 12px; margin: 0;
+  font-size: 13px; color: var(--muted); pointer-events: none;
+}
+.stage .viewbtns { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.stage-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 16px; min-width: 0; }
+.panel h2 { font: 700 20px/1.2 var(--display); margin: 0; }
+.panel p { margin: 0; }
+.muted { color: var(--muted); font-size: 14px; }
+.label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+
+.tabs { display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 8px; }
+.tabs button { flex: 1; }
+.tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+
+button, .btn {
+  font: 700 14px/1 var(--body); border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  padding: 10px 14px; border-radius: 8px; cursor: pointer;
+}
+.tabs button { border: 0; background: transparent; color: var(--muted); }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 16px; padding: 14px 18px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* colour palette */
+.palette { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.swatch {
+  display: grid; gap: 4px; justify-items: center; padding: 8px 4px; border-radius: 8px;
+  border: 2px solid transparent; background: var(--bg); color: var(--ink); font: 700 12px/1 var(--body);
+}
+.swatch .chip { width: 30px; height: 30px; border-radius: 6px; border: 1px solid rgb(0 0 0 / 0.25); }
+.swatch[aria-pressed="true"] { border-color: var(--accent); background: var(--panel); }
+.swatch .count { font: 500 11px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.swatch .count.full { color: var(--ok); }
+.swatch .count.over { color: var(--danger); }
+
+/* unfolded net */
+.net-scroll { overflow-x: auto; }
+.net {
+  display: grid; grid-template-columns: repeat(12, minmax(18px, 30px)); gap: 3px;
+  justify-content: center; user-select: none;
+}
+.net .cell { aspect-ratio: 1; border-radius: 4px; border: 1px solid rgb(0 0 0 / 0.28); padding: 0; cursor: pointer; }
+.net .cell.center { cursor: default; position: relative; }
+.net .cell.center::after {
+  content: attr(data-face); position: absolute; inset: 0; display: grid; place-items: center;
+  font: 700 11px/1 var(--mono); color: rgb(0 0 0 / 0.55);
+}
+.net .gap { aspect-ratio: 1; }
+.net .cell:hover:not(.center) { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.status { padding: 10px 12px; border-radius: 8px; background: var(--bg); font-size: 14px; }
+.status.error { color: var(--danger); }
+.status.good { color: var(--ok); }
+
+.movebox { display: flex; gap: 8px; }
+.movebox input {
+  flex: 1; min-width: 0; font: 500 14px/1 var(--mono); padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+
+/* solution */
+.now { display: grid; gap: 4px; padding: 14px; border-radius: 8px; background: var(--bg); }
+.now .big { font: 700 40px/1 var(--mono); }
+.now .what { font-size: 15px; }
+.moves { display: flex; flex-wrap: wrap; gap: 6px; }
+.moves button { font: 700 14px/1 var(--mono); padding: 8px 10px; min-width: 44px; }
+.moves button.done { color: var(--muted); }
+.moves button.current { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.player { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.player button { font-size: 18px; padding: 10px 0; }
+.speed { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.speed input { flex: 1; accent-color: var(--accent); }
+
+.notation { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
+.notation b { font-family: var(--mono); }
+details summary { cursor: pointer; font-weight: 700; }
+footer { color: var(--muted); font-size: 13px; }
+footer a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<!-- page:end -->
+</head>
+<body>
+<!-- body:start -->
+<div class="wrap">
+  <header>
+    <h1><span class="dot" aria-hidden="true">
+      <i style="background:var(--c-R)"></i><i style="background:var(--c-U)"></i><i style="background:var(--c-B)"></i>
+      <i style="background:var(--c-F)"></i><i style="background:var(--c-D)"></i><i style="background:var(--c-L)"></i>
+      <i style="background:var(--c-B)"></i><i style="background:var(--c-R)"></i><i style="background:var(--c-F)"></i>
+    </span>Rubik's Cube Solver</h1>
+    <p class="tagline">Enter the colours of your cube, press Solve, and follow the moves one at a time.</p>
+  </header>
+
+  <div class="main">
+    <div class="stage" id="stage">
+      <div class="viewbtns">
+        <button id="resetView" type="button" title="Show the front, top and right faces">Reset view</button>
+      </div>
+      <p class="hint" id="stageHint">Drag to look around. Click a sticker to paint it.</p>
+    </div>
+
+    <section class="panel" aria-label="Controls">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tabEdit" aria-selected="true" type="button">1. Enter colours</button>
+        <button role="tab" id="tabSolve" aria-selected="false" type="button" disabled>2. Solve</button>
+      </div>
+
+      <div id="editPane" class="panel-pane" style="display:grid;gap:16px">
+        <p class="muted">Hold your cube with the <b>white</b> centre on top and the <b>green</b> centre facing you. Pick a colour, then click stickers on the map or on the 3D cube.</p>
+        <div class="palette" id="palette" role="group" aria-label="Paint colour"></div>
+        <div class="net-scroll"><div class="net" id="net" aria-label="Unfolded cube"></div></div>
+        <div class="status" id="status" role="status"></div>
+        <button class="primary" id="solveBtn" type="button">Solve</button>
+        <div class="row">
+          <button id="scrambleBtn" type="button">Random scramble</button>
+          <button id="resetBtn" type="button">Solved cube</button>
+          <button id="clearBtn" type="button">Clear all</button>
+        </div>
+        <details>
+          <summary>Or type a scramble</summary>
+          <div style="display:grid;gap:8px;margin-top:10px">
+            <div class="movebox">
+              <label for="movesInput" class="sr" hidden>Moves</label>
+              <input id="movesInput" placeholder="R U R' U' F2" autocomplete="off" spellcheck="false">
+              <button id="applyBtn" type="button">Apply</button>
+            </div>
+            <p class="muted">Moves start from a solved cube. Letters: U R F D L B. Add ' for anticlockwise, 2 for a half turn.</p>
+          </div>
+        </details>
+      </div>
+
+      <div id="solvePane" class="panel-pane" style="display:none;gap:16px">
+        <div class="now" aria-live="polite">
+          <span class="label" id="stepLabel">Ready</span>
+          <span class="big" id="stepMove">—</span>
+          <span class="what" id="stepWhat"></span>
+        </div>
+        <div class="player">
+          <button id="firstBtn" type="button" title="Back to start" aria-label="Back to start">⏮</button>
+          <button id="prevBtn" type="button" title="Previous move" aria-label="Previous move">◀</button>
+          <button id="playBtn" type="button" title="Play" aria-label="Play">▶</button>
+          <button id="nextBtn" type="button" title="Next move" aria-label="Next move">▶|</button>
+          <button id="lastBtn" type="button" title="Jump to solved" aria-label="Jump to solved">⏭</button>
+        </div>
+        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="45"></label>
+        <div>
+          <div class="label" id="movesLabel" style="margin-bottom:8px">Solution</div>
+          <div class="moves" id="moves"></div>
+        </div>
+        <button id="editBtn" type="button">Change colours</button>
+        <details>
+          <summary>How to read moves</summary>
+          <div class="notation" style="margin-top:10px">
+            <b>R</b><span>Turn the right face clockwise, as if you were looking straight at it.</span>
+            <b>R'</b><span>Turn the right face anticlockwise.</span>
+            <b>R2</b><span>Turn the right face twice (half turn).</span>
+            <b>U D F B L</b><span>Same idea for the top (Up), bottom (Down), front, back and left faces.</span>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+
+  <footer>Uses Kociemba's two-phase algorithm, so solutions are usually 20 to 24 moves. Everything runs in your browser.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+  "use strict";
+  const R = window.Rubik;
+  const FACES = R.FACES;
+  const NAMES = { U: "White", R: "Red", F: "Green", D: "Yellow", L: "Orange", B: "Blue", X: "Empty" };
+  const FACE_WORD = { U: "top", R: "right", F: "front", D: "bottom", L: "left", B: "back" };
+  const css = getComputedStyle(document.documentElement);
+  const colorOf = (k) => css.getPropertyValue("--c-" + k).trim();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- state ----------------------------------------------------------------
+  let stickers = R.SOLVED.split("");   // 54 letters, U R F D L B or X (not painted yet)
+  let brush = "U";
+  let mode = "edit";                   // "edit" | "solve"
+  let solution = [], startStickers = null, step = 0, playing = false;
+  const $ = (id) => document.getElementById(id);
+
+  // ---- solver (in a background worker, so the page never freezes) ------------
+  let worker = null, workerReady = false, pending = null, reqId = 0;
+  try {
+    worker = new Worker("core.js");
+    worker.onmessage = (e) => {
+      if (e.data.ready) { workerReady = true; if (pending) sendSolve(); return; }
+      if (pending && e.data.id === pending.id) { const p = pending; pending = null; p.resolve(e.data); }
+    };
+    worker.onerror = () => { worker = null; if (pending) sendSolve(); };
+  } catch (err) { worker = null; }
+
+  function sendSolve() {
+    if (worker && workerReady) { worker.postMessage({ id: pending.id, facelets: pending.facelets }); return; }
+    if (worker) return; // still building tables; sent once ready
+    // No worker available: solve right here (the page pauses for a second or two).
+    setTimeout(() => {
+      const p = pending; pending = null;
+      try { const t = Date.now(); p.resolve({ moves: R.solve(p.facelets), ms: Date.now() - t }); }
+      catch (err) { p.resolve({ error: err.message }); }
+    }, 30);
+  }
+  function solveAsync(facelets) {
+    return new Promise((resolve) => { pending = { id: ++reqId, facelets, resolve }; sendSolve(); });
+  }
+
+  // ---- palette + net -----------------------------------------------------------
+  const palette = $("palette");
+  for (const k of FACES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "swatch"; b.dataset.k = k;
+    b.innerHTML = `<span class="chip" style="background:${colorOf(k)}"></span>${NAMES[k]}<span class="count"></span>`;
+    b.addEventListener("click", () => { brush = k; renderPalette(); });
+    palette.appendChild(b);
+  }
+
+  // Net layout: U above F, then L F R B in a row, then D below F.
+  const NET_POS = { U: [0, 3], L: [3, 0], F: [3, 3], R: [3, 6], B: [3, 9], D: [6, 3] };
+  const net = $("net"), cells = [];
+  const grid = Array.from({ length: 9 }, () => new Array(12).fill(-1));
+  FACES.split("").forEach((f, k) => {
+    const [r0, c0] = NET_POS[f];
+    for (let i = 0; i < 9; i++) grid[r0 + Math.floor(i / 3)][c0 + (i % 3)] = 9 * k + i;
+  });
+  for (const row of grid) for (const idx of row) {
+    if (idx < 0) { const g = document.createElement("span"); g.className = "gap"; net.appendChild(g); continue; }
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "cell";
+    const center = idx % 9 === 4;
+    if (center) { b.classList.add("center"); b.dataset.face = FACES[Math.floor(idx / 9)]; b.tabIndex = -1; }
+    b.setAttribute("aria-label", `${FACE_WORD[FACES[Math.floor(idx / 9)]]} face sticker ${(idx % 9) + 1}`);
+    b.addEventListener("click", () => paint(idx));
+    net.appendChild(b); cells[idx] = b;
+  }
+
+  function paint(idx) {
+    if (mode !== "edit" || idx % 9 === 4) return;
+    stickers[idx] = brush;
+    refresh();
+  }
+
+  function counts() {
+    const n = { U: 0, R: 0, F: 0, D: 0, L: 0, B: 0, X: 0 };
+    for (const s of stickers) n[s]++;
+    return n;
+  }
+
+  function renderPalette() {
+    const n = counts();
+    for (const b of palette.children) {
+      const k = b.dataset.k;
+      b.setAttribute("aria-pressed", String(k === brush));
+      const c = b.querySelector(".count");
+      c.textContent = `${n[k]}/9`;
+      c.className = "count" + (n[k] === 9 ? " full" : n[k] > 9 ? " over" : "");
+    }
+  }
+
+  function check() {
+    const n = counts();
+    if (n.X) return { ok: false, msg: `${n.X} sticker${n.X > 1 ? "s" : ""} still to paint.` };
+    const over = FACES.split("").filter((k) => n[k] !== 9);
+    if (over.length) return { ok: false, msg: over.map((k) => `${NAMES[k]}: ${n[k]} of 9`).join(", ") + ". Each colour needs exactly 9.", error: true };
+    try { R.Cube.fromFacelets(stickers.join("")); }
+    catch (err) { return { ok: false, msg: err.message, error: true }; }
+    if (stickers.join("") === R.SOLVED) return { ok: false, msg: "This cube is already solved. Paint your own colours or try a random scramble." };
+    return { ok: true, msg: "Looks like a real cube. Ready to solve!" };
+  }
+
+  function refresh() {
+    stickers.forEach((s, i) => (cells[i].style.background = colorOf(s)));
+    renderPalette();
+    const c = check(), st = $("status");
+    st.textContent = c.msg;
+    st.className = "status" + (c.ok ? " good" : c.error ? " error" : "");
+    $("solveBtn").disabled = !c.ok;
+    view.setColors(stickers);
+  }
+
+  // ---- 3D cube ---------------------------------------------------------------------
+  const view = (function () {
+    const stage = $("stage");
+    if (!window.THREE) {
+      const fb = document.createElement("div");
+      fb.className = "stage-fallback";
+      fb.textContent = "The 3D view couldn't load. You can still enter colours on the map and solve.";
+      stage.appendChild(fb);
+      return { setColors() {}, animate: (m, ms, done) => done(), busy: () => false, resetView() {} };
+    }
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    stage.prepend(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    camera.position.set(0, 0, 11);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.45);
+    sun.position.set(4, 8, 6);
+    scene.add(sun);
+
+    const world = new THREE.Group();
+    scene.add(world);
+    const DEFAULT_VIEW = { x: 0.52, y: -0.68 };
+    world.rotation.set(DEFAULT_VIEW.x, DEFAULT_VIEW.y, 0, "XYZ");
+
+    const body = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.6 });
+    const boxGeo = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+    const stickerGeo = new THREE.PlaneGeometry(0.82, 0.82);
+    const cubies = [], stickerMeshes = [];
+    const cubieAt = {};
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+      if (!x && !y && !z) continue;
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      g.userData.home = [x, y, z];
+      g.add(new THREE.Mesh(boxGeo, body));
+      world.add(g); cubies.push(g); cubieAt[[x, y, z].join()] = g;
+    }
+    for (let i = 0; i < 54; i++) {
+      const { pos, normal } = R.stickerGeometry(i);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.35 });
+      const m = new THREE.Mesh(stickerGeo, mat);
+      const n = new THREE.Vector3(...normal);
+      m.position.copy(n.clone().multiplyScalar(0.485));
+      m.lookAt(n.clone().multiplyScalar(2));
+      m.userData.index = i;
+      cubieAt[pos.join()].add(m);
+      stickerMeshes[i] = m;
+    }
+
+    function setColors(s) {
+      s.forEach((k, i) => stickerMeshes[i].material.color.set(colorOf(k)));
+    }
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(stage);
+    resize();
+
+    // turning a layer
+    let anim = null;
+    const pivot = new THREE.Group();
+    world.add(pivot);
+    function animate(m, ms, done) {
+      const { axis, layer, angle } = R.moveRotation(m);
+      const layerCubies = cubies.filter((c) => c.userData.home[axis] === layer);
+      pivot.rotation.set(0, 0, 0);
+      layerCubies.forEach((c) => pivot.attach(c));
+      anim = { axis: "xyz"[axis], angle, start: performance.now(), ms: reduceMotion ? 0 : ms, layerCubies, done };
+    }
+    function finish() {
+      const a = anim; anim = null;
+      a.layerCubies.forEach((c) => {
+        world.attach(c);
+        c.position.set(...c.userData.home);
+        c.rotation.set(0, 0, 0);
+      });
+      pivot.rotation.set(0, 0, 0);
+      a.done();
+    }
+
+    // dragging to look around, clicking to paint
+    let drag = null;
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      drag = { x: e.clientX, y: e.clientY, rx: world.rotation.x, ry: world.rotation.y, moved: false };
+      stage.setPointerCapture(e.pointerId);
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      world.rotation.y = drag.ry + dx * 0.01;
+      world.rotation.x = Math.max(-1.4, Math.min(1.4, drag.rx + dy * 0.01));
+    });
+    const ray = new THREE.Raycaster();
+    stage.addEventListener("pointerup", (e) => {
+      if (!drag) return;
+      const wasDrag = drag.moved; drag = null;
+      if (wasDrag || anim || mode !== "edit") return;
+      const r = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
+      const hit = ray.intersectObjects(stickerMeshes)[0];
+      if (hit) paint(hit.object.userData.index);
+    });
+
+    function loop(now) {
+      if (anim) {
+        const p = anim.ms ? Math.min(1, (now - anim.start) / anim.ms) : 1;
+        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        pivot.rotation[anim.axis] = anim.angle * eased;
+        if (p >= 1) finish();
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    return {
+      setColors, animate, busy: () => !!anim,
+      resetView() { world.rotation.set(DEFAULT_VIEW.x, DEFAULT_VIEW.y, 0, "XYZ"); },
+    };
+  })();
+
+  // ---- solving + playback ---------------------------------------------------------------
+  const QUARTER = { 0: "clockwise", 1: "twice (half turn)", 2: "anticlockwise" };
+  const describe = (m) => `Turn the ${FACE_WORD[FACES[Math.floor(m / 3)]]} face ${QUARTER[m % 3]}.`;
+  const duration = () => 900 - Number($("speed").value) * 8;
+
+  function setMode(next) {
+    mode = next;
+    $("editPane").style.display = next === "edit" ? "grid" : "none";
+    $("solvePane").style.display = next === "solve" ? "grid" : "none";
+    $("tabEdit").setAttribute("aria-selected", String(next === "edit"));
+    $("tabSolve").setAttribute("aria-selected", String(next === "solve"));
+    $("stageHint").textContent = next === "edit" ? "Drag to look around. Click a sticker to paint it." : "Drag to look around.";
+  }
+
+  async function doSolve() {
+    const c = check();
+    if (!c.ok) return;
+    const btn = $("solveBtn");
+    btn.disabled = true;
+    btn.textContent = workerReady || !worker ? "Solving…" : "Getting ready (first time only)…";
+    const res = await solveAsync(stickers.join(""));
+    btn.textContent = "Solve";
+    btn.disabled = false;
+    if (res.error) { const st = $("status"); st.textContent = res.error; st.className = "status error"; return; }
+    solution = res.moves; startStickers = stickers.slice(); step = 0;
+    $("movesLabel").textContent = `Solution: ${solution.length} moves`;
+    const box = $("moves");
+    box.innerHTML = "";
+    solution.forEach((m, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = R.MOVE_NAMES[m];
+      b.title = `Move ${i + 1}: ${describe(m)}`;
+      b.addEventListener("click", () => jumpTo(i + 1));
+      box.appendChild(b);
+    });
+    $("tabSolve").disabled = false;
+    setMode("solve");
+    renderStep();
+  }
+
+  function stickersAt(n) {
+    return R.Cube.fromFacelets(startStickers.join("")).apply(solution.slice(0, n)).toFacelets().split("");
+  }
+
+  function renderStep() {
+    const total = solution.length;
+    [...$("moves").children].forEach((b, i) => {
+      b.className = i < step ? "done" : i === step ? "current" : "";
+    });
+    if (step >= total) {
+      $("stepLabel").textContent = "Done";
+      $("stepMove").textContent = "Solved!";
+      $("stepWhat").textContent = `That took ${total} moves. Press ⏮ to watch it again.`;
+    } else {
+      $("stepLabel").textContent = `Move ${step + 1} of ${total}`;
+      $("stepMove").textContent = R.MOVE_NAMES[solution[step]];
+      $("stepWhat").textContent = describe(solution[step]);
+    }
+    $("playBtn").textContent = playing ? "⏸" : "▶";
+    $("playBtn").setAttribute("aria-label", playing ? "Pause" : "Play");
+    $("prevBtn").disabled = $("firstBtn").disabled = step === 0;
+    $("nextBtn").disabled = $("lastBtn").disabled = step >= total;
+  }
+
+  function stepForward(then) {
+    if (step >= solution.length || view.busy()) return;
+    const m = solution[step];
+    view.animate(m, duration(), () => {
+      step++; stickers = stickersAt(step); view.setColors(stickers); renderStep(); then && then();
+    });
+  }
+  function stepBack() {
+    if (step === 0 || view.busy()) return;
+    playing = false;
+    view.animate(R.inverseMove(solution[step - 1]), duration(), () => {
+      step--; stickers = stickersAt(step); view.setColors(stickers); renderStep();
+    });
+  }
+  function jumpTo(n) {
+    if (view.busy()) return;
+    playing = false; step = n; stickers = stickersAt(step); view.setColors(stickers); renderStep();
+  }
+  function play() {
+    if (!playing) return renderStep();
+    if (step >= solution.length) { playing = false; return renderStep(); }
+    stepForward(() => setTimeout(play, reduceMotion ? 400 : 120));
+  }
+
+  $("playBtn").addEventListener("click", () => {
+    if (step >= solution.length) jumpTo(0);
+    playing = !playing; renderStep(); if (playing) play();
+  });
+  $("nextBtn").addEventListener("click", () => { playing = false; stepForward(); });
+  $("prevBtn").addEventListener("click", stepBack);
+  $("firstBtn").addEventListener("click", () => jumpTo(0));
+  $("lastBtn").addEventListener("click", () => jumpTo(solution.length));
+  $("solveBtn").addEventListener("click", doSolve);
+  $("editBtn").addEventListener("click", () => {
+    playing = false;
+    if (startStickers) stickers = startStickers.slice();
+    $("tabSolve").disabled = true; setMode("edit"); refresh();
+  });
+  $("tabEdit").addEventListener("click", () => $("editBtn").click());
+  $("tabSolve").addEventListener("click", () => setMode("solve"));
+  $("resetView").addEventListener("click", () => view.resetView());
+
+  $("scrambleBtn").addEventListener("click", () => {
+    const moves = R.randomScramble(25);
+    $("movesInput").value = R.formatMoves(moves);
+    stickers = new R.Cube().apply(moves).toFacelets().split(""); refresh();
+  });
+  $("resetBtn").addEventListener("click", () => { stickers = R.SOLVED.split(""); refresh(); });
+  $("clearBtn").addEventListener("click", () => {
+    stickers = stickers.map((s, i) => (i % 9 === 4 ? s : "X")); refresh();
+  });
+  function applyTyped() {
+    try {
+      stickers = new R.Cube().apply($("movesInput").value).toFacelets().split(""); refresh();
+    } catch (err) { const st = $("status"); st.textContent = err.message; st.className = "status error"; }
+  }
+  $("applyBtn").addEventListener("click", applyTyped);
+  $("movesInput").addEventListener("keydown", (e) => { if (e.key === "Enter") applyTyped(); });
+  document.addEventListener("keydown", (e) => {
+    if (mode !== "solve" || e.target.tagName === "INPUT") return;
+    if (e.key === "ArrowRight") { playing = false; stepForward(); }
+    if (e.key === "ArrowLeft") stepBack();
+    if (e.key === " ") { e.preventDefault(); $("playBtn").click(); }
+  });
+
+  // Open with an example scramble so the page shows what it does straight away.
+  stickers = new R.Cube().apply("F R U' B2 L D2 R' F2 U L2 B' D R2 F' U2").toFacelets().split("");
+  $("movesInput").value = "F R U' B2 L D2 R' F2 U L2 B' D R2 F' U2";
+  refresh();
+})();
+</script>
+<!-- body:end -->
+</body>
+</html>

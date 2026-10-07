@@ -1,9 +1,39 @@
 # Rubik's Cube Solver
 
-A Rubik's Cube solver written in plain Python, no dependencies. Give it a scrambled
-cube and it prints a solution, usually around 20 to 24 moves, in under a second.
+Solve any Rubik's Cube in about 20 to 24 moves. There are two ways to use it:
 
-It uses **Kociemba's two-phase algorithm**:
+- **In your browser** (`web/`): paint your cube's colours on a map or straight onto a
+  3D cube, press **Solve**, and watch the 3D cube play the solution move by move.
+  Nothing to install.
+- **From Python or the command line** (`rubiks_solver/`): plain Python, no dependencies.
+
+## The web app
+
+Open `web/index.html` through any web server, for example:
+
+```bash
+cd web
+python -m http.server
+# then open http://localhost:8000
+```
+
+Once the repo is on GitHub, the `pages` workflow publishes `web/` to GitHub Pages so
+anyone can use it at `https://<your-username>.github.io/rubiks-solver/`
+(turn it on once under **Settings > Pages > Source: GitHub Actions**).
+
+How to use it:
+
+1. Hold your cube with the **white** centre on top and the **green** centre facing you.
+2. Pick a colour and click stickers to match your cube. The counters show how many of
+   each colour you've placed (each needs 9). Mistakes like a twisted corner are caught.
+3. Press **Solve**, then use play / next / back to follow along. Arrow keys and space work too.
+
+The solver runs in a background Web Worker (`web/core.js`), which is the same algorithm as
+the Python version, ported to JavaScript. The 3D view uses [three.js](https://threejs.org/).
+
+## How the solver works
+
+Both versions use **Kociemba's two-phase algorithm**:
 
 1. **Phase 1** turns the cube into a special "half-solved" state where every piece
    is pointing the right way and the middle-layer edges are in the middle layer.
@@ -13,11 +43,11 @@ The answer is short but not always the shortest possible: a cube scrambled with
 5 moves might get a 12-move solution, because it goes via the half-solved state.
 
 Each phase is a depth-first search guided by lookup tables that say "you need at
-least N more moves from here", so the search skips hopeless paths. The tables are
-built the first time you run it (about 15-60 seconds) and cached in
-`~/.cache/rubiks_solver/`.
+least N more moves from here", so the search skips hopeless paths. The browser
+builds these tables in about a second when the page opens. Python takes 15 to 60
+seconds the first time, then caches them in `~/.cache/rubiks_solver/`.
 
-## Install
+## Python install
 
 ```bash
 git clone https://github.com/<your-username>/rubiks-solver.git
@@ -83,6 +113,10 @@ print(solve(cube))   # a move string like "F2 U R U' R U2 D2 ..."
 ## Project layout
 
 ```
+web/
+  index.html  the web app (colour picker, 3D cube, playback)
+  core.js     cube model + solver in JavaScript
+  tests/      node tests
 rubiks_solver/
   cube.py     the cube model: pieces, moves, sticker strings
   tables.py   coordinates and lookup tables for the solver
@@ -96,12 +130,13 @@ tests/        pytest tests
 ```bash
 pip install -e ".[test]"
 pytest
+node --test web/tests/core.test.js
 ```
 
 ## Ideas for later
 
-- A 3D cube in the browser that animates the solution
 - Read a real cube's colours from a webcam photo
+- A beginner mode that explains the solution layer by layer
 - Keep searching for shorter solutions when there's time left
 
 ## License
